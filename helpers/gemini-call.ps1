@@ -36,6 +36,9 @@ param(
     [Parameter(Mandatory=$true)][ValidateSet("fast","standard","deep")][string]$ThinkingLevel,
     [Parameter(Mandatory=$true)][string]$PromptFile,
     [string]$StdinFile,
+    # Schema mode (default ""): validate envelope's .response as /cross-ai-review findings JSON.
+    # No-schema mode ("none"): treat .response as raw markdown. Used by /clarify with gemini analyst.
+    [string]$Schema = "",
     [Parameter(Mandatory=$true)][string]$RunDir,
     [Parameter(Mandatory=$true)][string]$CallStarted
 )
@@ -115,15 +118,21 @@ if (-not $HaltClass -and $OutSize -gt 0) {
         } else {
             $Response = $Envelope.response
             $ResponseClean = $Response -replace '^```(json)?\r?\n', '' -replace '\r?\n```$', ''
-            try {
-                $Reviewer = $ResponseClean | ConvertFrom-Json -ErrorAction Stop
-                if ($Reviewer.summary -and $Reviewer.verdict -and $Reviewer.findings) {
-                    $ResponseClean | Out-File -FilePath $TmpReviewer -Encoding UTF8 -NoNewline
-                } else {
+            if ($Schema -eq "none") {
+                # No-schema mode: write raw markdown response; caller (e.g. /clarify) parses it.
+                $ResponseClean | Out-File -FilePath $TmpReviewer -Encoding UTF8 -NoNewline
+            } else {
+                # Schema mode: validate as /cross-ai-review findings JSON.
+                try {
+                    $Reviewer = $ResponseClean | ConvertFrom-Json -ErrorAction Stop
+                    if ($Reviewer.summary -and $Reviewer.verdict -and $Reviewer.findings) {
+                        $ResponseClean | Out-File -FilePath $TmpReviewer -Encoding UTF8 -NoNewline
+                    } else {
+                        $HaltClass = "G"
+                    }
+                } catch {
                     $HaltClass = "G"
                 }
-            } catch {
-                $HaltClass = "G"
             }
             if ($Envelope.stats -and $Envelope.stats.models) {
                 $ModelActual = ($Envelope.stats.models | Get-Member -MemberType NoteProperty | Select-Object -First 1).Name

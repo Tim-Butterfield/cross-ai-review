@@ -39,7 +39,7 @@ All helpers take the same arguments (with platform-appropriate flag style):
 | `--thinking-level <level>` / `-ThinkingLevel <level>` | yes | Abstract level: `fast`, `standard`, or `deep` |
 | `--prompt-file <path>` / `-PromptFile <path>` | yes | File containing the reviewer prompt |
 | `--stdin-file <path>` / `-StdinFile <path>` | Gemini only, optional | File to pipe via stdin (artifact content) |
-| `--schema <path>` / `-Schema <path>` | Codex only, optional | JSON schema file (default `~/.claude/cross-ai-review-schema.json`) |
+| `--schema <path \| none>` / `-Schema <path \| none>` | optional | JSON schema file. Default for Codex: `~/.claude/cross-ai-review-schema.json` (used by /cross-ai-review). Default for Gemini: empty (which still triggers schema-mode validation of envelope's `.response` against the /cross-ai-review findings shape — same as Codex's default behavior, just resolved differently per CLI). **Pass the literal `none` to disable schema enforcement** — Codex omits the `--output-schema` flag and writes raw text response to `-o`; Gemini skips the JSON validation of `.response` and writes raw text to the reviewer file. The literal `none` is the only documented way to disable schema enforcement; passing an empty string is undefined behavior (avoid). **Used by `/clarify` when the analyst is codex/gemini** (analyst returns packet markdown directly, not schema-enforced JSON). |
 | `--run-dir <path>` / `-RunDir <path>` | yes | Run directory for output |
 | `--call-started <ts>` / `-CallStarted <ts>` | yes | Timestamp prefix for output filenames (e.g., `20260430T223050`) |
 
@@ -48,9 +48,9 @@ All helpers take the same arguments (with platform-appropriate flag style):
 ## Output
 
 Each helper writes (paths relative to `--run-dir`):
-- `.tmp-<call-started>-out.json` — raw CLI output (Codex: schema-enforced reviewer JSON; Gemini: envelope `{response, stats, error}`)
+- `.tmp-<call-started>-out.json` — raw CLI output. Schema mode: Codex writes the schema-enforced reviewer JSON; Gemini writes the envelope `{response, stats, error}`. **No-schema mode** (`--schema none`): Codex writes the model's raw text response (typically markdown); Gemini still writes the envelope, with `.response` containing markdown.
 - `.tmp-<call-started>-err` — full stderr capture
-- For Gemini only: `.tmp-<call-started>-reviewer.json` — extracted and parsed reviewer JSON (envelope's `.response` after fence-stripping)
+- For Gemini only: `.tmp-<call-started>-reviewer.json` — extracted reviewer content (envelope's `.response` after fence-stripping). Schema mode: validated as findings JSON. **No-schema mode**: written as raw markdown text (file extension `.json` is a misnomer in this case but kept for filename grammar consistency).
 
 To stdout, each helper prints a single JSON status object:
 ```json
