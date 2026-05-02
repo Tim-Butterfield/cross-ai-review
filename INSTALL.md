@@ -102,6 +102,7 @@ TS=$(date +%Y%m%dT%H%M%S)
 [ -f ~/.claude/CLAUDE.md ] && cp ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.backup-$TS
 [ -f ~/.claude/cross-ai-review-methodology.md ] && cp ~/.claude/cross-ai-review-methodology.md ~/.claude/cross-ai-review-methodology.md.backup-$TS
 [ -f ~/.claude/commands/cross-ai-review.md ] && cp ~/.claude/commands/cross-ai-review.md ~/.claude/commands/cross-ai-review.md.backup-$TS
+[ -f ~/.claude/commands/clarify.md ] && cp ~/.claude/commands/clarify.md ~/.claude/commands/clarify.md.backup-$TS
 [ -f ~/.claude/cross-ai-review-config.json ] && cp ~/.claude/cross-ai-review-config.json ~/.claude/cross-ai-review-config.json.backup-$TS
 [ -f ~/.claude/cross-ai-review-schema.json ] && cp ~/.claude/cross-ai-review-schema.json ~/.claude/cross-ai-review-schema.json.backup-$TS
 ```
@@ -110,7 +111,11 @@ Tell the user where the backups are. They can restore by `mv backup-file origina
 
 ---
 
-## Step 3 — Install the slash command
+## Step 3 — Install the slash commands
+
+The pack ships **two slash commands**: `/cross-ai-review` (the governed-verification cycle) and `/clarify` (the intent-formation companion that surfaces ambiguities for the user to decide). Install both — they share the same provider config and reviewer helpers, so installing one without the other leaves a coherent gap.
+
+### Step 3a — Install `/cross-ai-review`
 
 Copy `cross-ai-review.md` from the starter pack into `~/.claude/commands/`. Use the absolute path from Step 0a:
 
@@ -126,7 +131,25 @@ head -5 ~/.claude/commands/cross-ai-review.md
 
 The file should start with `---` (YAML frontmatter) and contain a `description:` line on line 2.
 
-**Important**: Claude Code loads slash commands at session start. The newly-installed command WILL NOT be recognized in the current Claude session — the user will need to **start a new Claude Code session** before they can run `/cross-ai-review`. You'll handle this in Step 9 (smoke test).
+### Step 3b — Install `/clarify`
+
+Copy `clarify.md` from the starter pack into `~/.claude/commands/`:
+
+```sh
+cp <path-to-starter-pack>/clarify.md ~/.claude/commands/clarify.md
+```
+
+Verify:
+```sh
+ls -la ~/.claude/commands/clarify.md
+head -5 ~/.claude/commands/clarify.md
+```
+
+Same shape as Step 3a — `---` frontmatter + `description:` line.
+
+`/clarify` reuses `~/.claude/cross-ai-review-config.json` (Step 6 below) and the helper scripts at `~/.claude/cross-ai-review-helpers/` (Step 7) when the analyst is codex or gemini (per `--analyst` flag; default analyst is claude/host, which uses neither). There is no separate config or helper directory for `/clarify`.
+
+**Important**: Claude Code loads slash commands at session start. The newly-installed commands WILL NOT be recognized in the current Claude session — the user will need to **start a new Claude Code session** before they can run `/cross-ai-review` or `/clarify`. You'll handle this in Step 9 (smoke test).
 
 ---
 
@@ -381,6 +404,7 @@ Tell the user:
 - **"Always allow"** at that prompt is the recommended response — it grants the helper a session-long allowlist entry that survives across calls. (Claude Code writes the entry to `~/.claude/settings.local.json` or, if scoped wider, `~/.claude/settings.json` — driven by the user's choice at the prompt.)
 - Allowing is safe because the helper itself enforces read-only sandboxing on the reviewer CLI (`-s read-only` for Codex, `--approval-mode plan` for Gemini), so even with the helper allowlisted the reviewer cannot modify your artifacts.
 - Same prompt and same response apply to `gemini-call.sh` (or `.ps1`) on its first invocation.
+- **The allowlist is shared across slash commands.** Both `/cross-ai-review` and `/clarify` (with `--analyst codex` or `--analyst gemini`) invoke the same helper paths — so granting `~/.claude/cross-ai-review-helpers/codex-call.sh *` once via "always allow" covers BOTH commands. Users do not need to re-allow per command. If a re-prompt happens on a second command, the original grant was likely "allow once" rather than "always allow", or scoped to specific args rather than the helper-path-prefix pattern.
 - "Just once" / "deny" remain available if the user wants per-call confirmation or wants to abort.
 
 The slash command (Hard rule #4) constructs every helper invocation with literal parameter values so the prompt always exposes the "always allow" option. If you ever see a prompt that lacks "always allow" because the command "contains expansion," that's a slash-command bug — surface it rather than working around it.
@@ -415,7 +439,7 @@ Run the cross-AI review against the smoke-test artifact to confirm everything wo
 The slash command was installed in Step 3, but the current Claude Code session loaded its commands at startup and won't see the new one. **Tell the user to exit this Claude Code session and start a new one in the smoke-test directory:**
 
 ```sh
-cd <path-to-starter-pack>/smoke-test
+cd <path-to-starter-pack>/smoke-test/cross-ai-review
 # user exits this Claude session, then starts a fresh one in this directory
 ```
 
@@ -433,7 +457,7 @@ Claude (you, in the new session) will execute the cycle per the instructions in 
 
 ### 9c. Verify expected behavior
 
-The smoke test artifact has 9 deliberate flaws (vague language, placeholders, contradictions, duplicates, vague performance targets, vague verification, missing definitions, weak DoD, ambiguous error handling — see `smoke-test/README.md` for the full list).
+The smoke test artifact has 9 deliberate flaws (vague language, placeholders, contradictions, duplicates, vague performance targets, vague verification, missing definitions, weak DoD, ambiguous error handling — see `smoke-test/cross-ai-review/README.md` for the full list).
 
 After the first iterating-reviewer iteration, you should see:
 - A `tmp/cross-ai-review/<RUN_ID>/` directory created in the smoke-test directory
@@ -455,6 +479,42 @@ If the first iterating-reviewer call fails:
 
 Stop the smoke test after the first iterating-reviewer call succeeds — no need to run a full cycle for install verification.
 
+### 9d. (Optional) `/clarify` smoke test
+
+`/clarify` has its own smoke-test fixture at `<path-to-starter-pack>/smoke-test/clarify/sample-mobile-app-requirements.md` — a deliberately under-specified mobile-app spec.
+
+The `/cross-ai-review` smoke test in 9b started a fresh Claude Code session in `<path-to-starter-pack>/smoke-test/cross-ai-review/`. For the `/clarify` smoke test, change directory into the `/clarify` smoke-test subfolder so the run dir lands cleanly under it (parallel to the `/cross-ai-review` smoke-test layout):
+
+```sh
+cd <path-to-starter-pack>/smoke-test/clarify
+```
+```
+/clarify sample-mobile-app-requirements.md
+```
+
+If the user prefers to stay in their current cwd from Step 9b (`<path-to-starter-pack>/smoke-test/cross-ai-review/`), they can invoke with a relative path: `/clarify ../clarify/sample-mobile-app-requirements.md`. From the pack root: `/clarify smoke-test/clarify/sample-mobile-app-requirements.md`. The `cd smoke-test/clarify` form is recommended — it keeps the `tmp/clarify/<RUN_ID>/` run dir under that subfolder.
+
+You should see:
+
+- A `[clarify]` line on the first line of output naming the artifact, host (`claude`), **resolved analyst** (`claude` for the default smoke test; `codex (model_slug)` or `gemini (model_slug)` if `--analyst` was used), and output path.
+- A run folder at `tmp/clarify/<RUN_ID>/` (under the cwd the user invoked from) containing the decision packet at `tmp/clarify/<RUN_ID>/clarify-packet.md`. Each entry in the packet has a host-written analysis zone (question, choices with pros/cons inline, recommendation, reason, impact, suggested update) followed by a `#### Your decision (fill in below)` block with blank `My choice` and `Further comments` fields for the user to fill in. The packet doubles as the user's workspace — one file end-to-end. If the analyst was codex or gemini, the analyst's single per-call audit (`<call-started>-<cli>-iter-P1-1-1.md`) is also in the same folder.
+- A short chat summary listing total entries and the top 3 most-consequential decisions.
+- The artifact `sample-mobile-app-requirements.md` is **unchanged** (per `/clarify`'s read-only-by-default rule).
+
+**Pass / warn / fail thresholds** (use these consistently):
+
+- **Pass**: packet contains **≥ 10 entries** (the sample artifact has 15 deliberate ambiguities; `/clarify`'s 10-entry target floor encourages thoroughness, with no upper bound — a healthy run surfaces all genuine ambiguities). Entries have concrete options + recommendations + impacts; at least one entry is from a high-impact category (tech stack, auth, backend, performance metric, distribution).
+- **Warn**: 6–9 entries — close to the floor but under it for an artifact this under-specified; investigate before declaring the install verified by 9d. Likely cause: a too-low `thinking_level` or the model stopping the impact-filter walk early. Try increasing `thinking_level` to `deep` and re-running.
+- **Fail**: < 6 entries OR any recommendation reads as an autonomous decision rather than an advisory option the user can override. The model is skimming or misinterpreting the run — try `thinking_level: deep` and re-run.
+
+**No graceful degradation for analyst halts.** Per `/clarify` Hard rule #3, if `--analyst codex` or `--analyst gemini` is selected and the chosen CLI is missing/unauthed/halts mid-run, `/clarify` HALTS the run with halt artifacts in the run dir; it does NOT silently fall back to claude or write a partial packet. The default-analyst smoke-test path (`/clarify sample-mobile-app-requirements.md`, no flag) uses claude (host) and does not trigger the halt path; the halt path applies only to user-selected non-claude analysts.
+
+**The iteration cycle**: `/clarify` is designed to iterate. After this smoke-test run, you (or the user) can fill in decisions in the packet, ask Claude to apply them to `sample-mobile-app-requirements.md`, then re-run `/clarify` to see what new ambiguities surface (or get `Total entries: 0` if the artifact is now settled). For large packets, it's fine to decide a subset, apply, and come back for the rest — deferred entries re-surface in the next run with stable wording. Most artifacts converge in 1–3 cycles. Reaching `Total entries: 0` is the explicit "manual cycle complete" signal — the chat reply will recommend proceeding to `/cross-ai-review`.
+
+**Optional — multi-analyst variation**: after Claude returns 0 entries, the user can OPTIONALLY re-run with `/clarify --analyst codex sample-mobile-app-requirements.md` (or `--analyst gemini`) for a fresh perspective from a different model. Each analyst surfaces different ambiguities; if both/all return 0, the artifact is reasonably clarified from the configured perspectives (the user remains the decision authority — this is a confidence signal, not a guarantee of completeness). Substitution, not addition: each `/clarify` run has one analyst. See `~/.claude/commands/clarify.md` § Analyst selection for full details.
+
+The `/clarify` smoke test is **optional** — install of `/cross-ai-review` is verified by 9c above. Running 9d additionally confirms the second slash command loaded and that the host's `/clarify` workflow produces a well-formed packet (including the thoroughness expectation: aim for ≥ 10 entries when the artifact has them). Even when 9d is skipped, Step 10 should report the `/clarify` install status (file present at `~/.claude/commands/clarify.md`) explicitly.
+
 ---
 
 ## Step 10 — Final report to the user
@@ -462,19 +522,22 @@ Stop the smoke test after the first iterating-reviewer call succeeds — no need
 Tell the user:
 
 1. **Where files were installed**:
-   - `~/.claude/commands/cross-ai-review.md` (slash command)
-   - `~/.claude/CLAUDE.md` (cross-AI review stub — when-to-offer trigger, read-only summary, pointer)
-   - `~/.claude/cross-ai-review-methodology.md` (canonical methodology — loaded on demand by the slash command's Step 0; **do not delete or move this file**)
-   - `~/.claude/cross-ai-review-schema.json` (findings schema)
-   - `~/.claude/cross-ai-review-config.json` (provider/model/role/thinking-level config — **this is the file to edit when you want to change providers, models, role assignment, or thinking level**)
+   - `~/.claude/commands/cross-ai-review.md` (slash command — governed verification)
+   - `~/.claude/commands/clarify.md` (slash command — intent formation / decision support; companion to `/cross-ai-review`)
+   - `~/.claude/CLAUDE.md` (cross-AI review stub — when-to-offer triggers for both commands, read-only summary, pointer)
+   - `~/.claude/cross-ai-review-methodology.md` (canonical methodology for `/cross-ai-review` — loaded on demand by its Step 0; **do not delete or move this file**)
+   - `~/.claude/cross-ai-review-schema.json` (findings schema for `/cross-ai-review`)
+   - `~/.claude/cross-ai-review-config.json` (provider/model/role/thinking-level config — shared by both commands; **this is the file to edit when you want to change providers, models, role assignment, or thinking level**)
 
 2. **Where backups are** (from Step 2): paths and timestamps
 
 3. **Resolved provider configuration**: which CLI is the iterating reviewer, which is the cross-check reviewer (or "single-reviewer mode" if only one is available), and the model preference chain + resolved thinking level for each. Mention that the slash command auto-detects installed CLIs at runtime, so installing/uninstalling a CLI doesn't require a config edit.
 
-4. **Whether the smoke test passed**: yes/no, and what the first iterating-reviewer call produced
+4. **Whether the smoke tests passed**:
+   - `/cross-ai-review` smoke test (9c): yes/no, and what the first iterating-reviewer call produced.
+   - `/clarify` smoke test (9d): pass / warn / fail per the 9d thresholds, OR "skipped (file present at `~/.claude/commands/clarify.md`)" if 9d was not run. The user should know the second command is installed and loadable even if its smoke test wasn't exercised.
 
-5. **What's next**: they can now run `/cross-ai-review <path-to-artifact>` in any project. The artifact path can be a single file, multiple files, a git commit SHA, or `uncommitted`. If the project doesn't have `tmp/` gitignored, the run directory will still be created but won't be ignored — recommend adding `tmp/` to `.gitignore`. To run in **report mode** (single-pass; findings written to file; no edits applied), prepend `--report`: `/cross-ai-review --report <path-to-artifact>`. Useful for "tell me what's wrong; I'll decide what to fix" workflows or for artifacts you don't want Claude editing autonomously.
+5. **What's next**: they can now run `/cross-ai-review <path-to-artifact>` in any project to verify a settled artifact, or `/clarify <path-to-artifact-or-description>` to surface ambiguities BEFORE the artifact is settled. For `/cross-ai-review` the argument can be a single file, multiple files, a git commit SHA, or `uncommitted`; for `/clarify` it is a file (or files) OR a free-form description — `/clarify` does NOT accept SHA / `uncommitted` (those imply the artifact has past intent formation, which is the `/cross-ai-review` case). If the project doesn't have `tmp/` gitignored, the run directory will still be created but won't be ignored — recommend adding `tmp/` to `.gitignore`. To run `/cross-ai-review` in **report mode** (single-pass; findings written to file; no edits applied), prepend `--report`: `/cross-ai-review --report <path-to-artifact>`. Useful for "tell me what's wrong; I'll decide what to fix" workflows or for artifacts you don't want Claude editing autonomously. (`/clarify` is always read-only-by-default — it never edits the artifact regardless of mode.)
 
 6. **Reference**: `~/.claude/cross-ai-review-methodology.md` is the **methodology authority** — it documents the cycle's rules, halt taxonomy, validity rubric, severity baseline, layered review pattern (for multi-artifact reviews), audit artifact formats, configuration semantics, and per-CLI recipes. The slash command file (`~/.claude/commands/cross-ai-review.md`) is the **execution authority** — short procedural script that orchestrates the cycle by referencing methodology sections. The CLAUDE.md stub is just a trigger for when to *offer* a review and a pointer to the methodology. The README.md is the user-facing overview.
 

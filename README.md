@@ -1,8 +1,17 @@
 # cross-ai-review
 
-A self-contained starter pack for the **Cross-AI Review** workflow: an autonomous review cycle where two CLI-based AI reviewers (OpenAI's Codex and Google's Gemini) evaluate an artifact, and Claude Code (the agent reading this) judges each finding's validity and applies the valid ones.
+A self-contained starter pack for **two complementary Claude Code slash commands**:
 
-The cycle catches gaps, ambiguities, and assumptions a single reviewer would miss. It's been used to harden methodology documents, design specs, and code changes before declaring work done.
+- **`/cross-ai-review`** — the main workflow. An autonomous review cycle where two CLI-based AI reviewers (OpenAI's Codex and Google's Gemini) evaluate a settled artifact against its declared upstream authority, and Claude Code (the agent reading this) judges each finding's validity and applies the valid ones (apply mode) or records them (report mode).
+- **`/clarify`** — the companion. Surfaces ambiguities, missing decisions, hidden assumptions, and unresolved tradeoffs in an artifact BEFORE it is settled — output is a decision packet for the user, not edits. Claude is the host (always orchestrates and applies decisions). The **analyst** — the entity that surfaces ambiguities — defaults to Claude, with `--analyst codex` or `--analyst gemini` available as alternative single-analyst-per-run substitutions for a fresh perspective.
+
+The two commands share the same provider config and reviewer helpers but serve **different stages of artifact maturity**:
+
+> Use `/clarify` for **intent formation and human decision support**.
+>
+> Use `/cross-ai-review` for **governed verification against declared intent**.
+
+Together they harden artifacts at both ends: `/clarify` makes the intent deliberate before work begins; `/cross-ai-review` verifies the work matches the intent before declaring done.
 
 ## What this pack contains
 
@@ -12,11 +21,12 @@ The cycle catches gaps, ambiguities, and assumptions a single reviewer would mis
 | `INSTALL.md` | **Claude-readable install instructions** — open Claude Code, point it at this file |
 | `cross-ai-review-claude-section.md` | **CLAUDE.md stub** (~2.9k chars) — installed/merged into `~/.claude/CLAUDE.md`. Always-loaded. Contains the when-to-offer trigger, a one-paragraph read-only + output-modes summary, and a pointer to the methodology file. |
 | `cross-ai-review-methodology.md` | **Methodology authority** (~145k chars, v1) — installed to `~/.claude/cross-ai-review-methodology.md`. Loaded on demand by the slash command's Step 0, NOT auto-loaded into every Claude session. Defines the cycle's rules, formats, halt taxonomy, validity rubric, severity baseline, layered review pattern, six review primitives (P1-P6), pipeline structure (mechanical-pre → semantic → mechanical-post), output modes (apply / report), thinking levels, audit artifact formats, and per-CLI recipes. |
-| `cross-ai-review.md` | **Execution authority** — the slash command (installed to `~/.claude/commands/`). Orchestrates the cycle following the methodology, which it loads as Step 0 of every invocation. |
-| `cross-ai-review-config.example.json` | Example provider/model/role config (installed to `~/.claude/cross-ai-review-config.json`) |
-| `project-extension-template.md` | Optional per-project rigor extension template (project-specific severity rules, evaluation criteria, layered DAG declaration, etc.) |
-| `helpers/` | Wrapper scripts for reviewer CLIs — `.sh` (bash) and `.ps1` (PowerShell) versions of `codex-call` and `gemini-call`. INSTALL.md detects platform and copies the matching pair to `~/.claude/cross-ai-review-helpers/`. Reduces per-call permission-prompt friction. |
-| `smoke-test/` | Tiny artifact + expected behavior to verify the install works end-to-end |
+| `cross-ai-review.md` | **Execution authority for `/cross-ai-review`** — the slash command (installed to `~/.claude/commands/`). Orchestrates the cycle following the methodology, which it loads as Step 0 of every invocation. |
+| `clarify.md` | **Execution authority for `/clarify`** — the companion slash command (installed to `~/.claude/commands/`). Self-contained: hard rules + workflow + decision-packet format are inline in this file. Reuses `~/.claude/cross-ai-review-config.json` and the helper scripts when the analyst is codex or gemini (per `--analyst` flag). |
+| `cross-ai-review-config.example.json` | Example provider/model/role config (installed to `~/.claude/cross-ai-review-config.json`). Shared by both `/cross-ai-review` and `/clarify`. |
+| `project-extension-template.md` | Optional per-project rigor extension template for `/cross-ai-review` (project-specific severity rules, evaluation criteria, layered DAG / peer-mode scope declaration, P3-P6 primitive declarations, etc.). Not used by `/clarify`. |
+| `helpers/` | Wrapper scripts for reviewer CLIs — `.sh` (bash) and `.ps1` (PowerShell) versions of `codex-call` and `gemini-call`. INSTALL.md detects platform and copies the matching pair to `~/.claude/cross-ai-review-helpers/`. Reduces per-call permission-prompt friction. Used by `/cross-ai-review` (always; for the iterating + cross-check + verify reviewers) and by `/clarify` (when the analyst is codex or gemini). |
+| `smoke-test/` | Install-verification fixtures, with parallel subfolders per command. `smoke-test/cross-ai-review/sample-artifact.md` is the deliberately-flawed spec for `/cross-ai-review`; `smoke-test/clarify/sample-mobile-app-requirements.md` is the deliberately-under-specified mobile-app spec for `/clarify`. Each subfolder has its own `README.md` with run instructions and pass/warn/fail thresholds. The top-level `smoke-test/README.md` is an index. |
 | `LICENSE` | MIT |
 
 ## Prerequisites
@@ -40,19 +50,81 @@ Open Claude Code in this directory (or any directory) and tell it:
 
 > Read INSTALL.md from this starter pack and execute the install steps. Adapt commands to my platform.
 
-Claude will verify prerequisites, back up existing config, install the slash command, the CLAUDE.md stub, and the methodology file, write a config file based on what you have installed and your role preference, optionally walk you through the project extension, and run a smoke test.
+Claude will verify prerequisites, back up existing config, install both slash commands (`/cross-ai-review` and `/clarify`), the CLAUDE.md stub, and the methodology file, write a config file based on what you have installed and your role preference, optionally walk you through the project extension, and run a smoke test.
 
 ## How to invoke
 
-In any project, after install:
+In any project, after install you have **two slash commands**:
 
 ```
 /cross-ai-review <path-to-artifact>
+/clarify         <path-to-artifact-or-description>
 ```
 
-The argument can be a single file, multiple files, a git commit SHA, or `uncommitted`. The first thing the slash command prints is a `[config]` line naming the resolved provider configuration and (for multi-artifact reviews) the dependency DAG it identified or constructed.
+For `/cross-ai-review`, the argument can be a single file, multiple files, a git commit SHA, or `uncommitted`. For `/clarify`, the argument is a single file or multiple files OR a free-form description (when the artifact isn't yet written down) PLUS an optional `--analyst <claude | codex | gemini>` flag (default `claude`) selecting which model surfaces the ambiguities. `/clarify` does NOT accept git commit SHAs / `uncommitted` — those are `/cross-ai-review`-only because they imply the artifact has past intent formation.
 
-## Two output modes
+The first thing each slash command prints is a config line naming the resolved provider configuration. `/cross-ai-review`'s line additionally names the dependency DAG (for multi-artifact reviews); `/clarify`'s line names the resolved analyst (`claude` by default; `codex (model_slug)` or `gemini (model_slug)` if `--analyst` was used).
+
+## When to use `/clarify` vs `/cross-ai-review`
+
+The two commands serve different stages of artifact maturity. The right command depends on whether the artifact's **intent is settled**:
+
+| If the artifact... | Use | Why |
+|---|---|---|
+| Is new, under-specified, or you're unsure what to build | **`/clarify`** | Intent isn't settled. Surface ambiguities for the user to decide before any review. |
+| Is being designed and you'd silently default major decisions if you started reviewing | **`/clarify`** | Defaulting silently propagates implicit choices as if intentional. |
+| Has firm intent and you want to verify correctness | **`/cross-ai-review`** | Intent is settled. Review checks adherence to declared upstream authority. |
+| Has been edited since the last review and you're not sure what's drifted | **`/cross-ai-review`** | Detects drift; doesn't second-guess intent. |
+| Names what it is but not how to do it (mobile-app spec with no tech stack) | **`/clarify`** | Major architectural decisions aren't documented; downstream consumers will pick silently. |
+| Is settled enough that you're ready to ship and want one last look | **`/cross-ai-review`** | The kind of "second-opinion" pass the cycle is built for. |
+
+If you're not sure: try `/clarify` first. If the packet has `Total entries: 0`, the artifact is settled (from this analyst's perspective) and `/cross-ai-review` is the right next step. If the packet has any entries, decide and apply them, then re-run `/clarify` (mandatory after any apply); only when `/clarify` returns 0 entries is the artifact ready for `/cross-ai-review`.
+
+### What `/clarify` outputs
+
+`/clarify` writes a **per-run folder** at `tmp/clarify/<RUN_ID>/` (parallel to `/cross-ai-review`'s `tmp/cross-ai-review/<RUN_ID>/`) containing one file plus optional reviewer audits:
+
+- **`clarify-packet.md`** — the decision packet. **Each entry has two zones:**
+  - **Host-written analysis (8 fields)**: question, why it matters, choices (with pros/cons inline under each option), recommendation, reason, impact if left unresolved, suggested artifact update after deciding, source attribution.
+  - **User-fill-in `Your decision` block (2 fields)**: `My choice` (the option label the user picks; blank = defer) and `Further comments` (optional notes, follow-up questions for Claude, or dissent from the recommendation).
+- **`<call-started>-<cli>-iter-P1-1-1.md`** — per-call analyst audit, present only when `--analyst codex` or `--analyst gemini` was used (one call per `/clarify` run; substitutive design, not multi-reviewer cross-check). Same filename grammar as `/cross-ai-review`'s per-call files; the `iter` segment reflects that this is the analyst's single surfacing call (not a cross-check phase, which doesn't exist in `/clarify`).
+
+The packet doubles as the user's workspace: read the question + choices + recommendation, fill in `My choice` and (if helpful) `Further comments`, then ask Claude to apply the filled packet to the target artifact. **One file end-to-end** — no separate decisions template to coordinate with.
+
+The packet ends with a **`## Next steps for the user`** section explaining how to read entries, fill in decisions, ask follow-up questions (in chat or via `Further comments`), apply filled decisions, defer entries, and re-run. This makes the run folder self-documenting — a user who closes Claude and comes back later (in a new session, possibly weeks later) has everything they need without the original chat history.
+
+`/clarify` does NOT edit the artifact and does NOT modify the packet's analysis zone after writing it. The user decides; Claude applies the user's recorded decisions to the **target artifact** named in the apply request, leaving the packet itself as a permanent record of what was surfaced and what was chosen.
+
+### The iteration cycle (when to use `/clarify` vs. `/cross-ai-review` in time)
+
+`/clarify` is designed to **iterate** until the artifact's intent is settled. The natural workflow:
+
+1. Run `/clarify <artifact>` → packet with **at least 10 entries** when that many genuine ambiguities exist, and as many more as the impact filter surfaces. There is no upper cap; thoroughness is encouraged. (For small or already-mostly-settled artifacts, the packet may have fewer than 10.)
+2. Read the packet, fill in `My choice` per entry, ask follow-up questions if needed, save. For large packets, decide a subset and apply, then come back for the rest.
+3. Ask Claude to apply: `Apply my decisions in tmp/clarify/<RUN_ID>/clarify-packet.md to <artifact>`. Claude updates the artifact for entries with `My choice` filled; deferred entries are skipped.
+4. **MUST re-run `/clarify`** after any apply (unless the run that triggered the apply already returned `Total entries: 0`). New decisions can surface new downstream ambiguities — e.g., picking "React Native" as the tech stack may surface a new question about navigation library. Skipping the re-run leaves you uncertain whether intent is settled. Each new run gets a fresh folder; deferred entries from prior runs re-surface with stable wording.
+5. Iterate steps 2–4 until `/clarify` returns **`Total entries: 0`** ("no questions surfaced — artifact's intent appears settled").
+6. Move to `/cross-ai-review <artifact>` for governed verification.
+
+Most artifacts converge in 1–3 cycles. The 0-entries response is the explicit "manual cycle complete (with this analyst)" signal; the user is informed in the chat reply that the artifact is ready either for `/cross-ai-review` or — optionally — for a fresh perspective from another analyst.
+
+### Multi-analyst /clarify (optional)
+
+After Claude (the default analyst) returns 0 entries, you can OPTIONALLY re-run with `--analyst codex` or `--analyst gemini` for a different perspective. Each analyst surfaces different ambiguities; running them in sequence can catch things one model alone might miss.
+
+```sh
+/clarify <artifact>                        # default: analyst = claude (host)
+/clarify --analyst codex <artifact>        # analyst = codex; claude orchestrates
+/clarify --analyst gemini <artifact>       # analyst = gemini; claude orchestrates
+```
+
+Substitution, not addition: each `/clarify` run has exactly **one analyst**. The flag swaps the analyst; it does NOT consult multiple analysts in one run.
+
+If multiple analysts each surface no further material ambiguities, the artifact is **reasonably clarified from those configured perspectives**. This is a confidence signal, not a guarantee of completeness — the user remains the decision authority. Different analysts may not agree on what's ambiguous; agreement (in the form of "all three returned 0") raises confidence, but only the user knows the domain well enough to judge whether intent is fully settled.
+
+For the full `/clarify` rules, see `~/.claude/commands/clarify.md` (the slash command's execution authority is inline — there's no separate methodology file because the cycle is much simpler than `/cross-ai-review`'s).
+
+## Two output modes (`/cross-ai-review` only)
 
 The cycle runs in one of two modes per invocation:
 
@@ -311,11 +383,12 @@ See `cross-ai-review-methodology.md` § Layered review pattern (including § DAG
 
 ## Where to learn more
 
-- **`cross-ai-review-methodology.md`** is the canonical reference for everything: cycle methodology, halt taxonomy, validity rubric, severity baseline, configuration, layered review pattern, audit artifact formats, per-CLI recipes. After install it's at `~/.claude/cross-ai-review-methodology.md` and is loaded on demand by the slash command's Step 0 (not auto-loaded into every Claude session — that keeps `CLAUDE.md` lean).
-- **`cross-ai-review-claude-section.md`** is the slim stub that gets merged into `~/.claude/CLAUDE.md`. It carries only the when-to-offer trigger, the read-only summary, and a pointer to the methodology — just enough to make Claude proactively suggest a review without auto-loading the full methodology.
-- **`cross-ai-review.md`** is the slash command — the procedural script that orchestrates the cycle. Reads short; loads the methodology file in Step 0 and refers to its sections by name throughout.
-- **`project-extension-template.md`** is what you'd add to a specific project's `CLAUDE.md` to declare project-specific severity rules, evaluation criteria, authority document DAG, and (optionally) override the global provider config.
-- **`smoke-test/`** is the install-verification fixture.
+- **`cross-ai-review-methodology.md`** is the canonical reference for the `/cross-ai-review` cycle: methodology, halt taxonomy, validity rubric, severity baseline, configuration, layered review pattern, audit artifact formats, per-CLI recipes. After install it's at `~/.claude/cross-ai-review-methodology.md` and is loaded on demand by the slash command's Step 0 (not auto-loaded into every Claude session — that keeps `CLAUDE.md` lean). `/clarify` does NOT load this file; its rules are inline in `clarify.md`.
+- **`cross-ai-review-claude-section.md`** is the slim stub that gets merged into `~/.claude/CLAUDE.md`. It carries the when-to-offer triggers for both `/cross-ai-review` and `/clarify`, the read-only summary, and pointers to the methodology and slash-command files — just enough to make Claude proactively suggest the right command without auto-loading the full methodology.
+- **`cross-ai-review.md`** is the `/cross-ai-review` slash command — the procedural script that orchestrates the verification cycle. Reads short; loads the methodology file in Step 0 and refers to its sections by name throughout.
+- **`clarify.md`** is the `/clarify` slash command — self-contained: hard rules, workflow, and decision-packet format are all inline. No companion methodology file (the cycle is much simpler than `/cross-ai-review`'s — no halt taxonomy, no iteration loop, no audit-trail formalism).
+- **`project-extension-template.md`** is what you'd add to a specific project's `CLAUDE.md` to declare `/cross-ai-review`-specific severity rules, evaluation criteria, authority-document DAG (layered or peer-mode), and (optionally) override the global provider config. Not used by `/clarify`.
+- **`smoke-test/cross-ai-review/sample-artifact.md`** + **`smoke-test/clarify/sample-mobile-app-requirements.md`** are the install-verification fixtures for `/cross-ai-review` and `/clarify` respectively. Each subfolder has its own `README.md`; the top-level `smoke-test/README.md` is an index.
 
 ## Questions or issues
 
