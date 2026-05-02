@@ -23,7 +23,7 @@ Note the shell — bash, zsh, PowerShell, cmd. All commands below use POSIX shel
 
 ## Step 1 — Detect available AI providers
 
-The pack supports two AI provider CLIs (Codex and Gemini). **At least one must be installed for the install to proceed; auth is verified eagerly for Codex (`codex login status`) and lazily for Gemini (the first `gemini -p` call in the smoke test).** Both providers is recommended (true cross-AI review needs two reviewers); one works in degraded single-reviewer mode (still gets the structured iteration loop, validity judgment, and audit trail — just without the cross-vendor second opinion). Step 9 (smoke test) is where any deferred auth issue surfaces concretely as a Class A halt.
+The pack supports two AI provider CLIs (Codex and Gemini). **At least one must be installed for the install to proceed; auth is verified eagerly for Codex (`codex login status`) and lazily for Gemini (the first `gemini -p` call in the smoke test).** Using both providers is recommended (true cross-AI review needs two reviewers); one works in degraded single-reviewer mode (still gets the structured iteration loop, validity judgment, and audit trail — just without the cross-vendor second opinion). Step 9 (smoke test) is where any deferred auth issue surfaces concretely as a Class A halt.
 
 Tell the user you're going to check what's installed and proceed based on what you find — you will NOT require them to install both.
 

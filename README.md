@@ -28,7 +28,7 @@ You need:
    - **Codex CLI** (OpenAI) — https://github.com/openai/codex. Verify with `codex --version` and `codex login status`.
    - **Gemini CLI** (Google) — https://github.com/google-gemini/gemini-cli. Verify with `gemini --version`.
 
-Both providers is recommended (true cross-AI review needs two reviewers); one works in single-reviewer mode (degraded but still useful — see methodology § Configuration → Single-reviewer mode degradation for what's preserved and what's skipped).
+Using both providers is recommended (true cross-AI review needs two reviewers); one works in single-reviewer mode (degraded but still useful — see methodology § Configuration → Single-reviewer mode degradation for what's preserved and what's skipped).
 
 Each provider's billing terms and model availability change over time and vary by region — check OpenAI's and Google's documentation. The cycle is billing-model-agnostic: it just needs your account to be able to invoke the configured models.
 
