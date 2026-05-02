@@ -1,0 +1,6 @@
+# Cross-AI review run outputs (per-call markdown files, summaries, halt classifications)
+tmp/
+
+# OS metadata
+.DS_Store
+Thumbs.db

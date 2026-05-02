@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "providers": {
+    "codex": {
+      "models": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+      "thinking_level": "standard"
+    },
+    "gemini": {
+      "models": ["gemini-3.1-pro-preview", "gemini-3-flash-preview"],
+      "thinking_level": "standard"
+    }
+  },
+  "role_preference": ["codex", "gemini"],
+  "layer_aggregate_cap": null
+}
