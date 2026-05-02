@@ -61,13 +61,26 @@ $TmpErr = Join-Path $RunDir ".tmp-$CallStarted-err"
 $Prompt = Get-Content $PromptFile -Raw
 
 # Invoke Codex with non-negotiable flags.
-$ArgList = @(
-    "exec", "-s", "read-only", "--skip-git-repo-check",
-    "-m", $Model, "-c", "model_reasoning_effort=$NativeReasoning",
-    "--output-schema", $Schema,
-    "-o", $TmpOut,
-    $Prompt
-)
+# Schema mode (default): --output-schema enforces JSON shape; used by /cross-ai-review.
+# No-schema mode (-Schema none): --output-schema is omitted; codex writes the model's
+# raw text response (typically markdown) to -o $TmpOut. Used by /clarify with codex
+# as the analyst.
+if ($Schema -eq "none") {
+    $ArgList = @(
+        "exec", "-s", "read-only", "--skip-git-repo-check",
+        "-m", $Model, "-c", "model_reasoning_effort=$NativeReasoning",
+        "-o", $TmpOut,
+        $Prompt
+    )
+} else {
+    $ArgList = @(
+        "exec", "-s", "read-only", "--skip-git-repo-check",
+        "-m", $Model, "-c", "model_reasoning_effort=$NativeReasoning",
+        "--output-schema", $Schema,
+        "-o", $TmpOut,
+        $Prompt
+    )
+}
 
 $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
 $ProcessInfo.FileName = "codex"

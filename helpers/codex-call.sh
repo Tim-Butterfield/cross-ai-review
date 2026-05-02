@@ -101,14 +101,30 @@ fi
 #   -s read-only             — sandbox prevents file modification
 #   --skip-git-repo-check    — required for non-git directories
 #   < /dev/null              — close stdin so codex doesn't hang
+#
+# Schema mode (default): --output-schema enforces JSON shape; codex writes
+# validated JSON to -o "$TMP_OUT". Used by /cross-ai-review.
+#
+# No-schema mode (--schema none): --output-schema flag is omitted; codex
+# writes the model's raw text response (typically markdown) to -o "$TMP_OUT".
+# Used by /clarify when the analyst is codex (the analyst returns a packet's
+# entry-block markdown directly, not schema-enforced JSON).
 PROMPT=$(cat "$PROMPT_FILE")
 set +e
-codex exec -s read-only --skip-git-repo-check \
-  -m "$MODEL" -c model_reasoning_effort="$NATIVE_REASONING" \
-  --output-schema "$SCHEMA" \
-  -o "$TMP_OUT" \
-  "$PROMPT" \
-  < /dev/null 2> "$TMP_ERR"
+if [ "$SCHEMA" = "none" ]; then
+  codex exec -s read-only --skip-git-repo-check \
+    -m "$MODEL" -c model_reasoning_effort="$NATIVE_REASONING" \
+    -o "$TMP_OUT" \
+    "$PROMPT" \
+    < /dev/null 2> "$TMP_ERR"
+else
+  codex exec -s read-only --skip-git-repo-check \
+    -m "$MODEL" -c model_reasoning_effort="$NATIVE_REASONING" \
+    --output-schema "$SCHEMA" \
+    -o "$TMP_OUT" \
+    "$PROMPT" \
+    < /dev/null 2> "$TMP_ERR"
+fi
 CODEX_EXIT=$?
 set -e
 

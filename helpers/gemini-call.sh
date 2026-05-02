@@ -37,6 +37,7 @@ set -e
 set -o pipefail
 
 STDIN_FILE=""
+SCHEMA=""  # default: validate envelope's .response as /cross-ai-review findings JSON. Set --schema none for /clarify-style markdown response.
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -50,6 +51,7 @@ while [ $# -gt 0 ]; do
     --thinking-level)   THINKING_LEVEL="$2"; shift 2 ;;
     --prompt-file)      PROMPT_FILE="$2"; shift 2 ;;
     --stdin-file)       STDIN_FILE="$2"; shift 2 ;;
+    --schema)           SCHEMA="$2"; shift 2 ;;
     --run-dir)          RUN_DIR="$2"; shift 2 ;;
     --call-started)     CALL_STARTED="$2"; shift 2 ;;
     *) echo "{\"error\": \"unknown arg: $1\"}" >&2; exit 8 ;;
@@ -117,7 +119,15 @@ if [ $GEMINI_EXIT -ne 0 ] || [ ! -s "$TMP_OUT" ]; then
   fi
 fi
 
-# Parse envelope and extract reviewer JSON if successful
+# Parse envelope and extract reviewer response if successful.
+#
+# Schema mode (default): the envelope's .response field is validated as JSON
+# matching /cross-ai-review's findings shape (.summary, .verdict, .findings).
+# Used by /cross-ai-review.
+#
+# No-schema mode (--schema none): the envelope's .response field is treated as
+# raw markdown text. No JSON validation. Used by /clarify when the analyst is
+# gemini (the analyst returns packet entry-block markdown directly, not JSON).
 MODEL_ACTUAL=""
 NATIVE_THINKING="gemini thinking_budget_tokens=$NATIVE_BUDGET"
 if [ -z "$HALT_CLASS" ] && [ -s "$TMP_OUT" ]; then
@@ -127,10 +137,16 @@ if [ -z "$HALT_CLASS" ] && [ -s "$TMP_OUT" ]; then
   else
     RESPONSE=$(jq -r '.response // empty' "$TMP_OUT" 2>/dev/null || echo "")
     RESPONSE_CLEAN=$(echo "$RESPONSE" | sed -E 's/^```(json)?$//; s/^```$//' | sed '/^$/d')
-    if echo "$RESPONSE_CLEAN" | jq -e '.summary, .verdict, .findings' > /dev/null 2>&1; then
-      echo "$RESPONSE_CLEAN" > "$TMP_REVIEWER"
+    if [ "$SCHEMA" = "none" ]; then
+      # No-schema mode: write the response as raw text; caller (e.g. /clarify) parses it.
+      printf '%s' "$RESPONSE_CLEAN" > "$TMP_REVIEWER"
     else
-      HALT_CLASS="G"
+      # Schema mode: validate as /cross-ai-review findings JSON.
+      if echo "$RESPONSE_CLEAN" | jq -e '.summary, .verdict, .findings' > /dev/null 2>&1; then
+        echo "$RESPONSE_CLEAN" > "$TMP_REVIEWER"
+      else
+        HALT_CLASS="G"
+      fi
     fi
     MODEL_ACTUAL=$(jq -r '.stats.models // {} | keys[0] // empty' "$TMP_OUT" 2>/dev/null || echo "")
     # Detect whether the CLI version honored the thinking-budget flag (best-effort).
